@@ -73,24 +73,6 @@ suppress:
   quit-message: true
 ```
 
-## 构建
-
-构建统一由 GitHub Actions 完成：
-
-- 推送 `main` 分支：执行编译校验与打包，产物作为构建工件上传。
-- 推送 `v*` 标签：执行构建并创建对应的正式 Release，附上两个 jar。
-
-工作流：[.github/workflows/build.yml](.github/workflows/build.yml)
-
-本地编译校验（需要 JDK 25）：
-
-```bash
-# 先准备 velocity/libs 下的两个编译期 API 依赖，来源与校验值见 velocity/build.gradle.kts 注释
-gradle build
-```
-
-产物输出在仓库根目录：`MikuMsg-Paper-<版本>.jar`、`MikuMsg-Velocity-<版本>.jar`。
-
 ## 作者
 
 JunXieX
