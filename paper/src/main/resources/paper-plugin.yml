@@ -1,0 +1,15 @@
+name: MikuMsg
+version: '${version}'
+main: me.junxiex.mikumsg.paper.MikuMsgPaper
+api-version: '26.3'
+description: 抑制后端原生玩家进出消息，配合 Velocity 端实现全网消息同步。
+authors:
+  - JunXieX
+folia-supported: true
+# 命令由 Brigadier 在代码中注册（见 MikuMsgPaper 的 COMMANDS 生命周期事件）：
+# Paper 插件格式不支持 commands 区段。权限在此声明以获得默认值与文档，
+# 实际判定在命令的执行体内完成。
+permissions:
+  mikumsg.reload:
+    description: 重载 MikuMsg 配置
+    default: op

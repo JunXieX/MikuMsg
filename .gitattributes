@@ -1,0 +1,5 @@
+# 统一换行符：gradlew 必须以 LF 入库，否则 Linux 上的 GitHub Actions 无法执行
+* text=auto
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary

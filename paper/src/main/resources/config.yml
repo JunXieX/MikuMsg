@@ -1,0 +1,10 @@
+# MikuMsg (Paper) 配置
+#
+# 本插件用于抑制后端子服务器原生的玩家进入/退出消息，
+# 避免与 Velocity 端 MikuMsg 全网同步的消息重复刷屏。
+
+suppress:
+  # 抑制玩家进入消息（join message）
+  join-message: true
+  # 抑制玩家退出消息（quit message）
+  quit-message: true

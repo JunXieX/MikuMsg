@@ -1,0 +1,62 @@
+name: Build & Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      # 编译期 API 依赖不入库，构建前按校验值下载
+      - name: Download compile-only API jars
+        run: |
+          set -euo pipefail
+          mkdir -p velocity/libs
+          curl -fsSL -o velocity/libs/MikuAuth-3.6.0.jar \
+            https://github.com/JunXieX/MikuAuth/releases/download/v3.6.0/MikuAuth-3.6.0.jar
+          echo "1c2aad9609adc609ba21d527fecf6d3137a2f366beadc1a7d04dfecd2cf4c667  velocity/libs/MikuAuth-3.6.0.jar" | sha256sum -c -
+          curl -fsSL -o velocity/libs/MikuVanish-API-1.3.0.jar \
+            https://github.com/JunXieX/MikuVanish/releases/download/v1.3.0/MikuVanish-API-1.3.0.jar
+          echo "43feabb819825a06b67131c66504927aa070e96ba1698470e6a870c7a6dbcf86  velocity/libs/MikuVanish-API-1.3.0.jar" | sha256sum -c -
+
+      - name: Build
+        run: |
+          chmod +x gradlew
+          ./gradlew build --no-daemon
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MikuMsg-jars
+          path: |
+            MikuMsg-Paper-*.jar
+            MikuMsg-Velocity-*.jar
+          if-no-files-found: error
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "MikuMsg ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            MikuMsg-Paper-*.jar MikuMsg-Velocity-*.jar
