@@ -47,8 +47,14 @@ final class PaperCommand {
             sender.sendMessage(Component.text("你没有权限执行该命令（需要 mikumsg.reload）。", NamedTextColor.RED));
             return 0;
         }
-        plugin.reloadPluginConfig();
-        sender.sendMessage(Component.text("MikuMsg 配置已重载。", NamedTextColor.GREEN));
+        if (plugin.reloadPluginConfig()) {
+            sender.sendMessage(Component.text("MikuMsg 配置已重载。", NamedTextColor.GREEN));
+        } else {
+            // 配置解析失败时不谎报成功：磁盘内容未生效，沿用当前配置
+            sender.sendMessage(Component.text(
+                    "MikuMsg 配置重载失败（config.yml 解析错误），已沿用当前配置，详情见控制台日志。",
+                    NamedTextColor.RED));
+        }
         return Command.SINGLE_SUCCESS;
     }
 

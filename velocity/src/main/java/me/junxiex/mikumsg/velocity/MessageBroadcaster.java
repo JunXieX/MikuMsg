@@ -36,7 +36,7 @@ public final class MessageBroadcaster {
     /**
      * 广播"进入"消息。
      *
-     * @param username   玩家名
+     * @param username   玩家名（任意来源，内部会做 MiniMessage 标签转义）
      * @param serverName 玩家当前所在服务器的注册名（非 null，已由调用方解析）
      */
     public void broadcastJoin(String username, String serverName) {
@@ -49,7 +49,7 @@ public final class MessageBroadcaster {
     /**
      * 广播"退出"消息。
      *
-     * @param username   玩家名
+     * @param username   玩家名（任意来源，内部会做 MiniMessage 标签转义）
      * @param serverName 玩家断开前（或对外最后一次可见时）所在服务器的注册名
      */
     public void broadcastLeave(String username, String serverName) {
@@ -62,7 +62,7 @@ public final class MessageBroadcaster {
     /**
      * 广播"切换服务器"消息。
      *
-     * @param username      玩家名
+     * @param username      玩家名（任意来源，内部会做 MiniMessage 标签转义）
      * @param newServerName 切换后所在服务器的注册名（非 null，已由调用方解析）
      * @param oldServerName 切换前所在服务器的注册名（非 null，已由调用方解析）
      */
@@ -79,22 +79,22 @@ public final class MessageBroadcaster {
      * <p>不受 {@code join.enabled} 约束：该开关只控制自动播报，管理员
      * 显式执行 /mmsg fj 时若被开关静默吞掉会造成命令"无响应"的困惑。</p>
      *
-     * @param playerName 虚假玩家名（任意字符串，已做注入防护）
+     * @param playerName 虚假玩家名（任意字符串，转义由 {@link #fill} 统一完成）
      * @param serverName 服务器注册名
      */
     public void broadcastFakeJoin(String playerName, String serverName) {
-        send(fill(config.joinFormat(), escapeTags(playerName), config.alias(serverName), null));
+        send(fill(config.joinFormat(), playerName, config.alias(serverName), null));
     }
 
     /**
      * 广播虚假"退出"消息（管理员命令触发，复用真实退出格式）。
      * 同 {@link #broadcastFakeJoin}：显式命令不受 {@code leave.enabled} 约束。
      *
-     * @param playerName 虚假玩家名（任意字符串，已做注入防护）
+     * @param playerName 虚假玩家名（任意字符串，转义由 {@link #fill} 统一完成）
      * @param serverName 服务器注册名
      */
     public void broadcastFakeLeave(String playerName, String serverName) {
-        send(fill(config.leaveFormat(), escapeTags(playerName), config.alias(serverName), null));
+        send(fill(config.leaveFormat(), playerName, config.alias(serverName), null));
     }
 
     /**
@@ -103,15 +103,21 @@ public final class MessageBroadcaster {
      * <p>与链式 {@link String#replace} 不同，替换产生的内容不会被再次扫描，
      * 杜绝"值里含占位符字面量被二次展开"的注入。未识别的 {@code %...%}
      * 序列原样保留。{@code oldServer} 为 null 时 {@code %old_server%} 填充为空串。</p>
+     *
+     * <p><b>玩家名一律转义 MiniMessage 标签</b>（服务器名来自注册表/配置，属可信来源，
+     * 不转义以允许别名里使用颜色标签）。真实玩家名并非总是可信：Velocity 的登录解码
+     * 只拒绝空用户名、不校验字符集，离线模式下客户端可自报含 {@code <} 的名字，
+     * 不转义将使其向全网注入可点击/悬浮组件。</p>
      */
-    private static String fill(String format, String player, String server, String oldServer) {
+    private String fill(String format, String player, String server, String oldServer) {
+        String safePlayer = escapeTags(player);
         StringBuilder out = new StringBuilder(format.length() + 32);
         int i = 0;
         int len = format.length();
         while (i < len) {
             if (format.charAt(i) == '%') {
                 if (format.startsWith("%player%", i)) {
-                    out.append(player);
+                    out.append(safePlayer);
                     i += "%player%".length();
                     continue;
                 }
@@ -132,9 +138,9 @@ public final class MessageBroadcaster {
         return out.toString();
     }
 
-    /** 转义玩家名中的 MiniMessage 标签，防止通过假名注入格式或点击事件。 */
+    /** 转义 MiniMessage 标签，防止玩家名注入格式或点击事件。 */
     private String escapeTags(String input) {
-        return miniMessage.escapeTags(input);
+        return input == null ? "" : miniMessage.escapeTags(input);
     }
 
     private void send(String miniMessageText) {

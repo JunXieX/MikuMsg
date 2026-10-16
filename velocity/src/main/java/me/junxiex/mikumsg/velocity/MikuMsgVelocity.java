@@ -31,7 +31,7 @@ import java.nio.file.Path;
 @Plugin(
         id = "mikumsg",
         name = "MikuMsg",
-        version = "1.5.0",
+        version = "1.6.0",
         description = "Velocity 端玩家进入/退出/切换服务器消息全网同步（联动 MikuAuth 过滤未登录玩家）",
         authors = {"JunXieX"},
         dependencies = {
@@ -57,23 +57,31 @@ public final class MikuMsgVelocity {
 
     @Subscribe
     public void onInitialize(ProxyInitializeEvent event) {
-        ProxyConfig config = new ProxyConfig(dataDirectory, logger);
-        config.load();
-        MessageBroadcaster broadcaster = new MessageBroadcaster(proxy, config, logger);
+        // 初始化整体兜底：Velocity 虽会捕获监听器异常继续启动代理，但异常一旦冲出
+        // 本方法，后续的监听器/命令注册全部不会执行——表现为"插件看似已加载却毫无功能"，
+        // 且只有一条不易察觉的 handler 异常日志。这里显式兜住，保证失败可见、可控。
+        try {
+            ProxyConfig config = new ProxyConfig(dataDirectory, logger);
+            config.load();
+            MessageBroadcaster broadcaster = new MessageBroadcaster(proxy, config, logger);
 
-        MikuAuthBridge auth = MikuAuthBridge.discover(proxy, logger);
-        VanishBridge vanish = VanishBridge.discover(logger);
+            MikuAuthBridge auth = MikuAuthBridge.discover(proxy, logger);
+            VanishBridge vanish = VanishBridge.discover(logger);
 
-        ConnectionListener connections = new ConnectionListener(broadcaster, auth, vanish, config);
-        proxy.getEventManager().register(this, connections);
-        if (vanish != null && vanish.supportsStateEvents()) {
-            // 仅当 MikuVanish 提供状态变更事件时注册：该监听器的方法签名引用其事件类型，
-            // 而反射扫描方法签名在类型缺失时会抛 NoClassDefFoundError——未安装或版本
-            // 过旧时不注册，VanishListener 整类不会被加载，主监听器不受影响。
-            proxy.getEventManager().register(this, new VanishListener(connections, broadcaster, logger));
+            ConnectionListener connections = new ConnectionListener(broadcaster, auth, vanish, config, proxy);
+            proxy.getEventManager().register(this, connections);
+            if (vanish != null && vanish.supportsStateEvents()) {
+                // 仅当 MikuVanish 提供状态变更事件时注册：该监听器的方法签名引用其事件类型，
+                // 而反射扫描方法签名在类型缺失时会抛 NoClassDefFoundError——未安装或版本
+                // 过旧时不注册，VanishListener 整类不会被加载，主监听器不受影响。
+                proxy.getEventManager().register(this, new VanishListener(connections, logger));
+            }
+            new VelocityCommand(proxy, this, config, broadcaster, logger).register();
+            logger.info("MikuMsg (Velocity) 已启用。");
+        } catch (Throwable t) {
+            // 依赖类链接失败是 Error 而非 Exception，必须用 Throwable 兜底
+            logger.error("MikuMsg (Velocity) 初始化失败：{}", t.getMessage(), t);
         }
-        new VelocityCommand(proxy, this, config, broadcaster).register();
-        logger.info("MikuMsg (Velocity) 已启用。");
     }
 
     @Subscribe

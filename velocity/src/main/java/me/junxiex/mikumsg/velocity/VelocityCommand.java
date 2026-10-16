@@ -17,6 +17,7 @@ import com.velocitypowered.api.proxy.server.RegisteredServer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.slf4j.Logger;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -31,8 +32,8 @@ import java.util.concurrent.CompletableFuture;
  * </ul>
  *
  * <p>虚假消息复用 {@code join.format} / {@code leave.format}，与真实消息
- * 格式完全一致；玩家名经 MiniMessage 转义防止标签注入。服务器参数缺省时
- * 取命令执行者（玩家）当前所在服务器；控制台执行时必须显式指定。</p>
+ * 格式完全一致；玩家名由 {@link MessageBroadcaster} 统一转义防止标签注入。
+ * 服务器参数缺省时取命令执行者（玩家）当前所在服务器；控制台执行时必须显式指定。</p>
  */
 public final class VelocityCommand {
 
@@ -44,22 +45,31 @@ public final class VelocityCommand {
     private final Object plugin;
     private final ProxyConfig config;
     private final MessageBroadcaster broadcaster;
+    private final Logger logger;
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
 
-    public VelocityCommand(ProxyServer proxy, Object plugin, ProxyConfig config, MessageBroadcaster broadcaster) {
+    public VelocityCommand(ProxyServer proxy, Object plugin, ProxyConfig config,
+                           MessageBroadcaster broadcaster, Logger logger) {
         this.proxy = proxy;
         this.plugin = plugin;
         this.config = config;
         this.broadcaster = broadcaster;
+        this.logger = logger;
     }
 
     public void register() {
         // 注：向代理→后端发送插件消息无需登记通道（ChannelRegistrar 仅用于接收/拦截，
         // 见 Velocity 官方 plugin-messaging 文档 Case 2）。后端各自 registerIncoming 即可。
-        CommandMeta meta = proxy.getCommandManager().metaBuilder("mmsg")
-                .plugin(plugin)
-                .build();
-        proxy.getCommandManager().register(meta, new BrigadierCommand(buildRoot()));
+        try {
+            CommandMeta meta = proxy.getCommandManager().metaBuilder("mmsg")
+                    .plugin(plugin)
+                    .build();
+            proxy.getCommandManager().register(meta, new BrigadierCommand(buildRoot()));
+        } catch (RuntimeException ex) {
+            // 与其它插件重名等冲突时注册会抛异常。本方法位于插件初始化收尾，
+            // 放任抛出会截断后续初始化；这里降级为告警，不影响已注册的监听器与消息广播。
+            logger.warn("命令 /mmsg 注册失败（可能已被其它插件占用）：{}", ex.getMessage());
+        }
     }
 
     private LiteralCommandNode<CommandSource> buildRoot() {
@@ -119,13 +129,15 @@ public final class VelocityCommand {
         config.load();
         int delivered = 0;
         for (RegisteredServer server : proxy.getAllServers()) {
-            // 插件消息经该服务器上任一玩家连接转发；无玩家在线时无法送达
+            // 插件消息经该服务器上任一玩家连接转发；无玩家在线时无法送达（返回 false）
             if (server.sendPluginMessage(RELOAD_CHANNEL, new byte[0])) {
                 delivered++;
             }
         }
+        // 只声称"已发出通知"：sendPluginMessage 的返回值仅表示消息已排入某条玩家连接，
+        // 后端是否真的重载成功由后端自行判定（其控制台会输出结果），代理无法感知。
         ctx.getSource().sendMessage(Component.text(
-                "代理配置已重载；已通知 " + delivered + " 台后端服务器重载配置"
+                "代理配置已重载；已向 " + delivered + " 台有玩家在线的后端发出重载通知"
                         + "（无玩家在线的后端收不到通知，请在其后端控制台执行 /mmsg reload）。",
                 NamedTextColor.GREEN));
         return 1;

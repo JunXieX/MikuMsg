@@ -3,9 +3,8 @@ package me.junxiex.mikumsg.velocity;
 import org.slf4j.Logger;
 
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.io.Reader;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -73,6 +72,10 @@ public final class ProxyConfig {
     /**
      * 加载（或重载）配置文件。synchronized 防止并发 reload（如控制台与
      * 玩家同时执行 /mmsg reload）时 props 的 clear+load 相互踩踏。
+     *
+     * <p>任何解析失败（文件读不出、内容非法）都<b>不向外抛</b>，只记日志并沿用当前
+     * 配置：本方法在 {@code onInitialize} 与 {@code /mmsg reload} 两条路径上调用，
+     * 抛出会分别导致"插件看似启用却毫无功能"与"命令中断"这类难排查的故障。</p>
      */
     public synchronized void load() {
         Path file = dataDirectory.resolve(FILE_NAME);
@@ -84,15 +87,33 @@ public final class ProxyConfig {
             // 重新加载前清空：Properties 是累加语义，不移除旧键会导致
             // 配置项删除后残留上次的值
             props.clear();
-            try (Reader reader = new InputStreamReader(Files.newInputStream(file), StandardCharsets.UTF_8)) {
-                props.load(reader);
+            // 先整文件读成字符串再解析，而不是直接 load(Reader)：这样可以剥掉
+            // 文件头的 UTF-8 BOM。Windows 记事本等编辑器保存的 UTF-8 会带 BOM，
+            // Properties 会把 U+FEFF 当成第一个键名的一部分（首键变成
+            // 带 BOM 前缀的 join.enabled），导致首行配置被静默忽略。
+            String text = stripBom(Files.readString(file, StandardCharsets.UTF_8));
+            // 只把"读文件 + 解析内容"包在捕获里：解析失败（IOException / 内容非法的
+            // IllegalArgumentException）都不外抛，沿用当前配置。parse() 刻意留在 try 之外，
+            // 使其自身的编程缺陷（如 NPE）能正常暴露，不会被误当作配置文件问题而静默吞掉。
+            try {
+                props.load(new StringReader(text));
+            } catch (IOException | RuntimeException ex) {
+                // 首次加载即遇错时为内置默认值，reload 失败时沿用上一次的配置。
+                // 内容非法（如反斜杠 u 后跟的不是 4 位十六进制）时 Properties.load 抛的是
+                // IllegalArgumentException 而非 IOException，故必须一并兜住：否则异常会冲出
+                // onInitialize，使监听器与命令全部注册不上，表现为插件"没有反应"。
+                logger.error("读取 MikuMsg 配置失败，沿用当前配置：{}", ex.getMessage());
+                return;
             }
             parse();
         } catch (IOException ex) {
-            // props 已清空但未进入 parse()，各 volatile 字段保持原有值：
-            // 首次加载即遇错时为内置默认值，reload 失败时沿用上一次的配置。
             logger.error("读取 MikuMsg 配置失败，沿用当前配置：{}", ex.getMessage());
         }
+    }
+
+    /** 去掉可能存在的 UTF-8 BOM（U+FEFF）。 */
+    private static String stripBom(String text) {
+        return !text.isEmpty() && text.charAt(0) == '\uFEFF' ? text.substring(1) : text;
     }
 
     private void parse() {

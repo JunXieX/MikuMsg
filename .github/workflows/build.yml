@@ -2,10 +2,10 @@ name: Build & Release
 
 on:
   push:
-    branches:
-      - main
-    tags:
-      - 'v*'
+    # 任意分支都构建：本地不跑 Gradle，验证编译的唯一途径就是推分支交给 Actions。
+    # 正式发布仅由 v* 标签触发（见下方条件），分支构建不会产生 Release。
+    branches: [ "**" ]
+    tags: [ 'v*' ]
   workflow_dispatch:
 
 permissions:
@@ -51,12 +51,41 @@ jobs:
             MikuMsg-Velocity-*.jar
           if-no-files-found: error
 
+      # 正式发布仅由标签触发。版本规则（主版本.正式版.测试版）：
+      # 第三位 = 0 → 正式版；第三位 > 0 → 测试版（标记为 prerelease）。
+      # 更新日志取自「打标签的那个提交」的正文（git 会剥掉标题行，%b 即结构化正文）；
+      # 正文为空时才回退到 GitHub 自动生成的变更清单。
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "MikuMsg ${GITHUB_REF_NAME}" \
-            --generate-notes \
-            MikuMsg-Paper-*.jar MikuMsg-Velocity-*.jar
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          # 已存在同名 Release 时跳过：重跑工作流属正常操作，不应判为失败。
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} 已存在，跳过发布。"
+            exit 0
+          fi
+          VER="${TAG#v}"
+          PATCH="${VER##*.}"
+          PRE_FLAG=""
+          if [ "${PATCH}" != "0" ]; then
+            PRE_FLAG="--prerelease"
+          fi
+          NOTES_FILE="$(mktemp)"
+          # git 对空正文也会输出一个换行，故用「去掉空白后仍非空」判断，而非 -s（恒为真）
+          git log -1 --format=%b HEAD > "${NOTES_FILE}"
+          if [ -n "$(tr -d '[:space:]' < "${NOTES_FILE}")" ]; then
+            gh release create "${TAG}" \
+              --title "MikuMsg ${VER}" \
+              ${PRE_FLAG} \
+              --notes-file "${NOTES_FILE}" \
+              MikuMsg-Paper-*.jar MikuMsg-Velocity-*.jar
+          else
+            gh release create "${TAG}" \
+              --title "MikuMsg ${VER}" \
+              ${PRE_FLAG} \
+              --generate-notes \
+              MikuMsg-Paper-*.jar MikuMsg-Velocity-*.jar
+          fi
