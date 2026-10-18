@@ -150,7 +150,9 @@ public final class ConnectionListener {
     /**
      * 进入隐身：移出可见登记表，并在同一临界区内补发离线消息（供 {@link VanishListener} 调用）。
      *
-     * <p>与连接事件共用 {@link #lock}，避免与 {@code onServerPostConnect} 的登记交错。</p>
+     * <p>与连接事件共用 {@link #lock}，避免与 {@code onServerPostConnect} 的登记交错。
+     * 只对<b>已在登记表中</b>的玩家补发：登记表本身只在认证通过后才写入，因此未登录玩家
+     * 天然不会产生离线消息，与连接事件的过滤口径一致。</p>
      *
      * @param username 玩家名（用于补发离线消息）
      * @return true = 此前对外可见，已补发离线消息；false = 此前未播报过，无需补发
@@ -169,11 +171,13 @@ public final class ConnectionListener {
     /**
      * 解除隐身：恢复可见登记并补发进入消息（供 {@link VanishListener} 调用）。
      *
-     * <p>仅在玩家<b>仍在线</b>且落点有效时才登记：解除隐身事件可能在玩家断开后才到达
-     * （事件经命令/插件消息线程异步发布），若此时盲目登记，会留下一条永不清除的
-     * 幽灵记录——该玩家下次上线时会被误判为"已播报过"，从而静默掉一次正常的进入消息。</p>
+     * <p>仅在玩家<b>仍在线</b>、<b>已通过认证</b>且落点有效时才登记：解除隐身事件可能在
+     * 玩家断开后才到达（事件经命令/插件消息线程异步发布），若此时盲目登记，会留下一条
+     * 永不清除的幽灵记录——该玩家下次上线时会被误判为"已播报过"，从而静默掉一次正常的
+     * 进入消息。认证判定与 {@link #onServerPostConnect} 保持一致：未登录玩家即使因异常
+     * 情形落在正式服，也不应因一次隐身翻转而被全网播报。</p>
      *
-     * @return true = 已登记并补发进入消息；false = 玩家已离线或落点无效，不补发
+     * @return true = 已登记并补发进入消息；false = 玩家已离线、未认证或落点无效，不补发
      */
     boolean endVanish(UUID playerId, String username, String serverName) {
         if (serverName == null || serverName.isEmpty() || isAuthServer(serverName)) {
@@ -183,6 +187,10 @@ public final class ConnectionListener {
             // 在线性检查放在锁内，与断开事件的移除操作互斥：
             // 若玩家已断开，绝不能登记，否则该条目永不被清除
             if (!isOnline(playerId)) {
+                return false;
+            }
+            // 认证检查与连接事件同口径：未登录玩家不对外播报
+            if (bridge != null && !bridge.isAuthenticated(playerId)) {
                 return false;
             }
             announced.put(playerId, serverName);

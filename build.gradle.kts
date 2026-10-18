@@ -6,7 +6,7 @@ allprojects {
     // 版本号唯一来源（Gradle 侧）：Velocity 的 @Plugin 注解为编译期常量，
     // 由 velocity 模块的 verifyPluginVersion 任务校验两处一致。
     group = "me.junxiex"
-    version = "1.6.0"
+    version = "1.6.1"
 
     repositories {
         mavenCentral()

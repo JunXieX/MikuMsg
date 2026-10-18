@@ -183,18 +183,34 @@ public final class VelocityCommand {
         return false;
     }
 
-    /** 玩家名补全：当前在线玩家。 */
+    /**
+     * 玩家名补全：当前在线玩家。
+     *
+     * <p>补全在无权限时返回空：Brigadier 的补全器<b>不参与</b> {@code requires} 过滤，
+     * 而本命令的权限刻意只在执行体内判定，因此若不在此处自行设防，任何玩家敲
+     * {@code /mmsg fj <Tab>} 都能枚举出全服在线名单——隐身玩家的存在也会随之暴露。</p>
+     */
     private CompletableFuture<Suggestions> suggestPlayers(
             CommandContext<CommandSource> ctx, SuggestionsBuilder builder) {
+        if (!ctx.getSource().hasPermission("mikumsg.fake")) {
+            return builder.buildFuture();
+        }
         for (Player online : proxy.getAllPlayers()) {
             builder.suggest(online.getUsername());
         }
         return builder.buildFuture();
     }
 
-    /** 服务器名补全：代理登记的全部服务器。 */
+    /**
+     * 服务器名补全：代理登记的全部服务器。
+     *
+     * <p>同样需要权限门禁：服务器拓扑属内部信息，不应向普通玩家暴露。</p>
+     */
     private CompletableFuture<Suggestions> suggestServers(
             CommandContext<CommandSource> ctx, SuggestionsBuilder builder) {
+        if (!ctx.getSource().hasPermission("mikumsg.fake")) {
+            return builder.buildFuture();
+        }
         for (RegisteredServer server : proxy.getAllServers()) {
             builder.suggest(server.getServerInfo().getName());
         }

@@ -50,10 +50,10 @@ final class VanishListener {
             }
             return;
         }
-        // 解除隐身：仅在玩家仍在线且落点有效（非空、非认证服）时登记并补发进入消息。
+        // 解除隐身：仅在玩家仍在线、已认证且落点有效（非空、非认证服）时登记并补发进入消息。
         // 玩家已离线时不登记，否则会留下永不清除的幽灵记录、静默掉其下次上线的进入消息。
         if (!connections.endVanish(playerId, event.username(), event.serverId())) {
-            logger.info("[隐身] {} 解除隐身但落点无效、玩家已离线或仍在认证服，按设计不补发进入消息",
+            logger.info("[隐身] {} 解除隐身但未播报：落点无效、玩家已离线、未通过认证或仍在认证服",
                     event.username());
         }
     }

@@ -31,7 +31,7 @@ import java.nio.file.Path;
 @Plugin(
         id = "mikumsg",
         name = "MikuMsg",
-        version = "1.6.0",
+        version = "1.6.1",
         description = "Velocity 端玩家进入/退出/切换服务器消息全网同步（联动 MikuAuth 过滤未登录玩家）",
         authors = {"JunXieX"},
         dependencies = {
