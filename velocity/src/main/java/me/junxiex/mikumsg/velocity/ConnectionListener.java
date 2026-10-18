@@ -104,7 +104,9 @@ public final class ConnectionListener {
         // 绝对正确，对本插件的唯一目的（消息同步）是划算的。
         synchronized (lock) {
             // 与隐身翻转并发时的兜底：若此刻已进入隐身，绝不登记（否则会留下一条
-            // 对隐身玩家可见的记录，且与 VanishListener 的撤销交错导致消息丢失）
+            // 对隐身玩家可见的记录，且与 VanishListener 的撤销交错导致消息丢失）。
+            // 依赖的上游契约：MikuVanish 在 applyState 中先写状态表、再发布事件，
+            // 因此这里读到 true 时其状态已是权威值，不会出现"事件已到但状态未更新"。
             if (vanish != null && vanish.isVanished(playerId)) {
                 return;
             }

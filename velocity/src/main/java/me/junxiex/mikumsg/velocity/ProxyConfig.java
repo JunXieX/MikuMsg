@@ -76,8 +76,11 @@ public final class ProxyConfig {
      * <p>任何解析失败（文件读不出、内容非法）都<b>不向外抛</b>，只记日志并沿用当前
      * 配置：本方法在 {@code onInitialize} 与 {@code /mmsg reload} 两条路径上调用，
      * 抛出会分别导致"插件看似启用却毫无功能"与"命令中断"这类难排查的故障。</p>
+     *
+     * @return true = 已按磁盘内容生效；false = 读取/解析失败，已沿用当前配置。
+     *         调用方（{@code /mmsg reload}）据此如实回执，避免"报成功但没生效"。
      */
-    public synchronized void load() {
+    public synchronized boolean load() {
         Path file = dataDirectory.resolve(FILE_NAME);
         try {
             if (!Files.exists(file)) {
@@ -103,11 +106,13 @@ public final class ProxyConfig {
                 // IllegalArgumentException 而非 IOException，故必须一并兜住：否则异常会冲出
                 // onInitialize，使监听器与命令全部注册不上，表现为插件"没有反应"。
                 logger.error("读取 MikuMsg 配置失败，沿用当前配置：{}", ex.getMessage());
-                return;
+                return false;
             }
             parse();
+            return true;
         } catch (IOException ex) {
             logger.error("读取 MikuMsg 配置失败，沿用当前配置：{}", ex.getMessage());
+            return false;
         }
     }
 
@@ -152,18 +157,50 @@ public final class ProxyConfig {
         aliases = Map.copyOf(snapshot);
     }
 
+    /**
+     * 解析布尔开关。
+     *
+     * <p>除 {@code true}/{@code false} 外，额外接受 {@code on/off}、{@code yes/no}、
+     * {@code 1/0} 这些在 properties 文件里极常见的写法。{@link Boolean#parseBoolean}
+     * 对它们一律返回 false——即管理员写 {@code join.enabled=yes} 会把进出消息<b>静默关掉</b>，
+     * 且日志里没有任何提示，属难以排查的配置陷阱。无法识别的值回落默认值并告警。</p>
+     */
     private boolean bool(String key, boolean def) {
         String v = props.getProperty(key);
-        return v == null ? def : Boolean.parseBoolean(v.trim());
+        if (v == null) {
+            return def;
+        }
+        return switch (v.trim().toLowerCase(Locale.ROOT)) {
+            case "true", "on", "yes", "1" -> true;
+            case "false", "off", "no", "0" -> false;
+            default -> {
+                logger.warn("MikuMsg 配置项 {} 的值 \"{}\" 不是合法布尔值，已使用默认值 {}。", key, v, def);
+                yield def;
+            }
+        };
     }
 
+    /**
+     * 解析字符串配置项。
+     *
+     * <p>按 {@code trim()} 后判空：properties 的 {@code key=   } 会解析成若干空格，
+     * 若只判 {@code isEmpty()} 就会被当作"已配置"，例如 {@code auth-server=   } 会让
+     * 认证服判定永远不成立，未登录玩家反而被照常播报。</p>
+     */
     private String str(String key, String def) {
         String v = props.getProperty(key);
-        return v == null || v.isEmpty() ? def : v;
+        if (v == null) {
+            return def;
+        }
+        String trimmed = v.trim();
+        return trimmed.isEmpty() ? def : trimmed;
     }
 
     /** 服务器别名：大小写不敏感匹配注册名，未配置别名时返回原始名。 */
     public String alias(String serverName) {
+        if (serverName == null) {
+            return "";
+        }
         String alias = aliases.get(serverName.toLowerCase(Locale.ROOT));
         return alias != null ? alias : serverName;
     }

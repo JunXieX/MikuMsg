@@ -49,13 +49,14 @@ final class PaperCommand {
         }
         if (plugin.reloadPluginConfig()) {
             sender.sendMessage(Component.text("MikuMsg 配置已重载。", NamedTextColor.GREEN));
-        } else {
-            // 配置解析失败时不谎报成功：磁盘内容未生效，沿用当前配置
-            sender.sendMessage(Component.text(
-                    "MikuMsg 配置重载失败（config.yml 解析错误），已沿用当前配置，详情见控制台日志。",
-                    NamedTextColor.RED));
+            return Command.SINGLE_SUCCESS;
         }
-        return Command.SINGLE_SUCCESS;
+        // 配置解析失败时不谎报成功：磁盘内容未生效，沿用当前配置。
+        // 返回值同样如实反映失败，避免命令方块 / RCON / 脚本把失败当成功。
+        sender.sendMessage(Component.text(
+                "MikuMsg 配置重载失败（config.yml 解析错误），已沿用当前配置，详情见控制台日志。",
+                NamedTextColor.RED));
+        return 0;
     }
 
     private void help(CommandSender sender) {

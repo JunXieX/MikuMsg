@@ -126,7 +126,14 @@ public final class VelocityCommand {
         if (!require(ctx.getSource(), "mikumsg.reload")) {
             return 0;
         }
-        config.load();
+        // 代理端配置解析失败时如实报错并中止：此时磁盘内容未生效，沿用旧配置，
+        // 继续向后端发重载通知只会让管理员误以为"全部已更新"
+        if (!config.load()) {
+            ctx.getSource().sendMessage(Component.text(
+                    "代理配置重载失败（config.properties 读取或解析错误），已沿用当前配置，详情见控制台日志。",
+                    NamedTextColor.RED));
+            return 0;
+        }
         int delivered = 0;
         for (RegisteredServer server : proxy.getAllServers()) {
             // 插件消息经该服务器上任一玩家连接转发；无玩家在线时无法送达（返回 false）

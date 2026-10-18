@@ -143,16 +143,17 @@ public final class MessageBroadcaster {
         return input == null ? "" : miniMessage.escapeTags(input);
     }
 
+    /**
+     * 解析并广播。MiniMessage 对非法/未闭合标签<b>不抛异常</b>（实测按字面文本渲染），
+     * 因此无需降级兜底；这里只兜住运行期异常，避免单条消息异常冒泡打断事件处理链。
+     */
     private void send(String miniMessageText) {
-        Component component;
         try {
-            component = miniMessage.deserialize(miniMessageText);
-        } catch (Exception ex) {
-            // 配置里的 MiniMessage 标签非法（如未闭合）时降级为纯文本广播，
-            // 不让单条消息因解析失败而静默丢失
-            logger.warn("MikuMsg 消息解析失败，已降级为纯文本：{}", ex.getMessage());
-            component = Component.text(miniMessageText);
+            proxy.sendMessage(miniMessage.deserialize(miniMessageText));
+        } catch (RuntimeException ex) {
+            // 理论上不可达（上述实测），保留兜底以防未来 MiniMessage 行为变化导致消息整体丢失
+            logger.warn("MikuMsg 消息发送失败，已改用纯文本：{}", ex.getMessage());
+            proxy.sendMessage(Component.text(miniMessageText));
         }
-        proxy.sendMessage(component);
     }
 }
