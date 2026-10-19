@@ -46,6 +46,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: MikuMsg-jars
+          retention-days: 1
           path: |
             MikuMsg-Paper-*.jar
             MikuMsg-Velocity-*.jar
